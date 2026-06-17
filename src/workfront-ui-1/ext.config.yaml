@@ -7,6 +7,23 @@ extensionPoints:
     - type: web
       impl: index.html
 web: web-src
+runtimeManifest:
+  packages:
+    workfront-oauth:
+      inputs:
+        WORKFRONT_DOMAIN: $WORKFRONT_DOMAIN
+        WORKFRONT_CLIENT_ID: $WORKFRONT_CLIENT_ID
+        WORKFRONT_CLIENT_SECRET: $WORKFRONT_CLIENT_SECRET
+        WORKFRONT_REDIRECT_URI: $WORKFRONT_REDIRECT_URI
+      actions:
+        oauth-callback:
+          function: ./actions/oauth-callback/index.js
+          runtime: nodejs:18
+          web: 'yes'
+        workfront-api:
+          function: ./actions/workfront-api/index.js
+          runtime: nodejs:18
+          web: 'yes'
 hooks:
   pre-app-run: node node_modules/@adobe/uix-guest/scripts/generate-metadata.js
   pre-app-build: node node_modules/@adobe/uix-guest/scripts/generate-metadata.js

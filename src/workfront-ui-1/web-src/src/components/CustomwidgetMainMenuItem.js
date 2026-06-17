@@ -19,7 +19,10 @@ import {
 } from '@adobe/react-spectrum';
 
 const WORKFRONT_API_BASE_URL = 'https://origin-dluxtechapacptrsdwf.my.workfront.com/attask/api/v21.0';
-const WORKFRONT_SESSION_ID = '094fe1b2fdbc498eaaace42bfe6467c3';
+const WORKFRONT_DOMAIN = process.env.WORKFRONT_DOMAIN || 'origin-dluxtechapacptrsdwf.my.workfront.com';
+const WORKFRONT_CLIENT_ID = process.env.WORKFRONT_CLIENT_ID || '';
+const WORKFRONT_REDIRECT_URI = process.env.WORKFRONT_REDIRECT_URI || '';
+const WORKFRONT_RUNTIME_BASE_URL = process.env.WORKFRONT_RUNTIME_BASE_URL || '';
 const WORKFRONT_TASK_FIELDS = [
   'DE:Request type',
   'DE:Request title',
@@ -177,6 +180,9 @@ const CustomwidgetMainMenuItem = () => {
   const [loadError, setLoadError] = useState('');
   const [submittedOnce, setSubmittedOnce] = useState(false);
   const [submittedRequest, setSubmittedRequest] = useState(null);
+  const [oauthStatus, setOauthStatus] = useState('unknown');
+  const [oauthMessage, setOauthMessage] = useState('');
+  const [apiResponse, setApiResponse] = useState(null);
 
   useEffect(() => {
     const nextTaskId = getTaskIdFromUrl();
@@ -253,6 +259,50 @@ const CustomwidgetMainMenuItem = () => {
     () => requestTypeOptions.find((type) => type.id === form.requestType),
     [form.requestType, requestTypeOptions]
   );
+
+  const buildAuthorizationUrl = () => {
+    const params = new URLSearchParams({
+      client_id: WORKFRONT_CLIENT_ID,
+      response_type: 'code',
+      redirect_uri: WORKFRONT_REDIRECT_URI,
+    });
+
+    return `https://${WORKFRONT_DOMAIN.replace(/\/+$/g, '')}/integrations/oauth2/authorize?${params.toString()}`;
+  };
+
+  const fetchConnectionStatus = async () => {
+    if (!WORKFRONT_RUNTIME_BASE_URL) {
+      setOauthStatus('missing-runtime-url');
+      setOauthMessage('Set WORKFRONT_RUNTIME_BASE_URL in your .env with the Adobe I/O Runtime base URL for this application.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${WORKFRONT_RUNTIME_BASE_URL}/workfront-api?resource=user/search&limit=1`);
+      const payload = await response.json();
+
+      if (response.ok) {
+        setOauthStatus('connected');
+        setOauthMessage('Workfront connection is live.');
+        setApiResponse(payload);
+      } else {
+        setOauthStatus('disconnected');
+        setOauthMessage(payload.error || 'Authorization not configured or token expired.');
+      }
+    } catch (error) {
+      setOauthStatus('error');
+      setOauthMessage(error.message || 'Unable to reach the runtime API.');
+    }
+  };
+
+  const handleStartOAuth = () => {
+    const url = buildAuthorizationUrl();
+    window.open(url, '_blank', 'noopener');
+  };
+
+  useEffect(() => {
+    fetchConnectionStatus();
+  }, []);
 
   const errors = useMemo(() => {
     const nextErrors = {};
@@ -467,51 +517,81 @@ const CustomwidgetMainMenuItem = () => {
                 <Well>
                   <Flex direction="column" gap="size-150">
                     <Heading level={2} margin="size-0">
-                      Draft preview
+                      Workfront OAuth Status
                     </Heading>
                     <Text>
-                      Title: {form.title || 'Untitled request'}
+                      Status: {oauthStatus === 'connected' ? 'Connected' : oauthStatus === 'disconnected' ? 'Disconnected' : oauthStatus === 'error' ? 'Error' : oauthStatus === 'missing-runtime-url' ? 'Configuration needed' : 'Checking...' }
                     </Text>
-                    <Text>
-                      Type: {selectedType?.label || form.requestType || 'Not provided'}
-                    </Text>
-                    <Text>
-                      Requester: {form.requestedBy || 'Not provided'}
-                    </Text>
-                    <Text>
-                      Target date: {form.dueDate || 'Not provided'}
-                    </Text>
-                    <Text>
-                      Notification: {form.notifyRequester ? 'Enabled' : 'Disabled'}
-                    </Text>
-                    <Divider size="S" />
-                    <Text>
-                      Campaign: {form.campaignName || 'Not provided'}
-                    </Text>
-                    <Text>
-                      Brand: {form.brand || 'Not provided'}
-                    </Text>
-                    <Text>
-                      Asset owner: {form.assetOwner || 'Not provided'}
-                    </Text>
-                    {submittedRequest && (
+                    <Text>{oauthMessage || 'Connect to Workfront to authorize API calls.'}</Text>
+                    <Button variant="cta" onPress={handleStartOAuth} isDisabled={!WORKFRONT_CLIENT_ID || !WORKFRONT_REDIRECT_URI || !WORKFRONT_RUNTIME_BASE_URL}>
+                      Connect to Workfront
+                    </Button>
+                    {apiResponse && (
                       <View
-                        backgroundColor="green-100"
-                        borderColor="green-400"
+                        backgroundColor="gray-100"
+                        borderColor="gray-300"
                         borderRadius="small"
                         borderWidth="thin"
-                        padding="size-200"
+                        padding="size-150"
                       >
-                        <Flex direction="column" gap="size-75">
-                          <StatusLight variant="positive">Ready to send</StatusLight>
-                          <Text>
-                            {submittedRequest.id} submitted at {submittedRequest.submittedAt}
-                          </Text>
-                        </Flex>
+                        <Heading level={4} margin="size-0">
+                          Example API Response
+                        </Heading>
+                        <Text>{JSON.stringify(apiResponse, null, 2)}</Text>
                       </View>
                     )}
                   </Flex>
                 </Well>
+                <View marginTop="size-200">
+                  <Well>
+                    <Flex direction="column" gap="size-150">
+                      <Heading level={2} margin="size-0">
+                        Draft preview
+                      </Heading>
+                      <Text>
+                        Title: {form.title || 'Untitled request'}
+                      </Text>
+                      <Text>
+                        Type: {selectedType?.label || form.requestType || 'Not provided'}
+                      </Text>
+                      <Text>
+                        Requester: {form.requestedBy || 'Not provided'}
+                      </Text>
+                      <Text>
+                        Target date: {form.dueDate || 'Not provided'}
+                      </Text>
+                      <Text>
+                        Notification: {form.notifyRequester ? 'Enabled' : 'Disabled'}
+                      </Text>
+                      <Divider size="S" />
+                      <Text>
+                        Campaign: {form.campaignName || 'Not provided'}
+                      </Text>
+                      <Text>
+                        Brand: {form.brand || 'Not provided'}
+                      </Text>
+                      <Text>
+                        Asset owner: {form.assetOwner || 'Not provided'}
+                      </Text>
+                      {submittedRequest && (
+                        <View
+                          backgroundColor="green-100"
+                          borderColor="green-400"
+                          borderRadius="small"
+                          borderWidth="thin"
+                          padding="size-200"
+                        >
+                          <Flex direction="column" gap="size-75">
+                            <StatusLight variant="positive">Ready to send</StatusLight>
+                            <Text>
+                              {submittedRequest.id} submitted at {submittedRequest.submittedAt}
+                            </Text>
+                          </Flex>
+                        </View>
+                      )}
+                    </Flex>
+                  </Well>
+                </View>
               </View>
             </Flex>
           </Flex>
